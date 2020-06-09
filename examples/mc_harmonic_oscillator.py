@@ -26,28 +26,27 @@ neq = 10
 nav = 10
 nprop = 10
 nvoid = 50
-nwalk = 1200
+nwalk = 200
 ndim = 3
 npart = 4
 seed = 17
 mass = 1.
 omega = 1.
 delta = 0.002
-eps = 0.0002
-model_save_path = f"./helium{npart}.model"
-
+eps = 0.0001
+module_load = True
+model_save_path = f"./nucleus_{npart}.model"
 
 # Set up logging:
 logger = logging.getLogger()
 # Create a file handler:
-hdlr = logging.FileHandler(f'helium{npart}.log')
+hdlr = logging.FileHandler(f'nucleus_{npart}.log')
 # Add formatting to the log:
 formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
 hdlr.setFormatter(formatter)
 logger.addHandler(hdlr) 
 # Set the default level. Levels here: https://docs.python.org/2/library/logging.html
 logger.setLevel(logging.INFO)
-
 
 logger.info(f"sig={sig}")
 logger.info(f"dx={dx}")
@@ -64,7 +63,6 @@ logger.info(f"omega={omega}")
 logger.info(f"delta={delta}")
 logger.info(f"eps={eps}")
 
-
 # Initialize Seed
 torch.manual_seed(seed)
 
@@ -80,6 +78,10 @@ hamiltonian =  HarmonicOscillator_mc(mass, omega, nwalk, ndim, npart)
 
 #Initialize Optimizer
 opt=Optimizer(delta,eps,wavefunction.npt)
+
+if module_load:
+   logger.info(f"module loaded")
+   wavefunction.load_state_dict(torch.load(model_save_path))
 
 # Propagation
 def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
@@ -147,7 +149,7 @@ def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
     dpsi_i_EL = total_estimator.dpsi_i_EL
     dpsi_ij = total_estimator.dpsi_ij
 
-    logger.info(f"psi norm{torch.mean(log_wpsi)}")
+    logger.info(f"psi norm {torch.mean(log_wpsi)}")
 
     with torch.no_grad(): 
         dp_i = opt.sr(energy,dpsi_i,dpsi_i_EL,dpsi_ij)
@@ -164,7 +166,7 @@ logger.info(f"initial_jf_energy {energy_jf, error_jf}")
 logger.info(f"initial_acceptance {acceptance}")
 logger.info(f"elapsed time {t1 - t0}")
 
-for i in range(2):
+for i in range(40):
 
         # Compute the energy:
         energy, error, energy_jf, error_jf, acceptance, delta_p = energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction)
@@ -178,6 +180,5 @@ for i in range(2):
             logger.info(f"acc = {acceptance.data:.3f}")
 
 # This saves the model:
-
 torch.save(wavefunction.state_dict(), model_save_path)
 

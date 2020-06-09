@@ -61,6 +61,6 @@ class Optimizer(object):
                logger.debug("dist reg", dist_reg.data)
                logger.debug("dist param norm", dist_norm.data)
                dp_i = dp_i.float()
-               if (dist < 0.001 and dist_reg < 0.001 and dist_norm < 0.2):
+               if (dist < 0.001 and dist_norm < 0.2):
                   break
         return dp_i
