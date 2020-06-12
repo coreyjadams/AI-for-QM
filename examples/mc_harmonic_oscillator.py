@@ -27,6 +27,7 @@ nav = 10
 nprop = 10
 nvoid = 50
 nwalk = 200
+nopt = 50
 ndim = 3
 npart = 4
 seed = 17
@@ -34,8 +35,11 @@ mass = 1.
 omega = 1.
 delta = 0.002
 eps = 0.0001
+pot_name = 'pionless_4'
 module_load = True
-model_save_path = f"./nucleus_{npart}.model"
+
+# Module save
+model_save_path = f"./{pot_name}_nucleus_{npart}.model"
 
 # Set up logging:
 logger = logging.getLogger()
@@ -44,24 +48,31 @@ hdlr = logging.FileHandler(f'nucleus_{npart}.log')
 # Add formatting to the log:
 formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
 hdlr.setFormatter(formatter)
+ch = logging.StreamHandler()
 logger.addHandler(hdlr) 
+logger.addHandler(ch)
 # Set the default level. Levels here: https://docs.python.org/2/library/logging.html
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
-logger.info(f"sig={sig}")
-logger.info(f"dx={dx}")
-logger.info(f"neq={neq}")
-logger.info(f"nav={nav}")
-logger.info(f"nprop={nprop}")
-logger.info(f"nvoid={nvoid}")
-logger.info(f"nwalk={nwalk}")
-logger.info(f"ndim={ndim}")
-logger.info(f"npart={npart}")
-logger.info(f"seed={seed}")
-logger.info(f"mass={mass}")
-logger.info(f"omega={omega}")
-logger.info(f"delta={delta}")
-logger.info(f"eps={eps}")
+logger.info(f"sig = {sig}")
+logger.info(f"dx = {dx}")
+logger.info(f"neq = {neq}")
+logger.info(f"nav = {nav}")
+logger.info(f"nprop = {nprop}")
+logger.info(f"nvoid = {nvoid}")
+logger.info(f"nwalk = {nwalk}")
+logger.info(f"nopt = {nopt}")
+logger.info(f"ndim = {ndim}")
+logger.info(f"npart = {npart}")
+logger.info(f"seed = {seed}")
+logger.info(f"mass = {mass}")
+logger.info(f"omega = {omega}")
+logger.info(f"delta = {delta}")
+logger.info(f"eps = {eps}")
+logger.info(f"potential model = {pot_name}")
+logger.info("\n")
+
+
 
 # Initialize Seed
 torch.manual_seed(seed)
@@ -71,13 +82,16 @@ wavefunction = NeuralWavefunction(ndim, npart)
 wavefunction.count_parameters()
 
 # Initialize Potential
-potential = NuclearPotential(nwalk)
+potential = NuclearPotential(nwalk, pot_name)
 
 # Initialize Hamiltonian 
 hamiltonian =  HarmonicOscillator_mc(mass, omega, nwalk, ndim, npart)
 
 #Initialize Optimizer
 opt=Optimizer(delta,eps,wavefunction.npt)
+
+# Initialize Flattener
+params_flat, indeces_flat = wavefunction.flatten_params(wavefunction.parameters())
 
 if module_load:
    logger.info(f"module loaded")
@@ -120,11 +134,10 @@ def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
                 log_wpsi = wavefunction(x_o)
                 jac = torch.zeros(size=[nwalk,wavefunction.npt])
                 for n in range(nwalk):
-                    log_wpsi_n = log_wpsi[n]
                     wavefunction.zero_grad()
                     params = wavefunction.parameters()
-                    dpsi_dp = torch.autograd.grad(log_wpsi_n, params, retain_graph=True)
-                    dpsi_i_n, indeces_flat = wavefunction.flatten_params(dpsi_dp)
+                    dpsi_dp = torch.autograd.grad(log_wpsi[n], params, retain_graph=True)
+                    dpsi_i_n = wavefunction.flatten_grad(dpsi_dp)
                     jac[n,:] = torch.t(dpsi_i_n)
 #                log_wpsi_n.detach_()
                 dpsi_i = torch.sum(jac, dim=0) / nwalk
@@ -166,7 +179,7 @@ logger.info(f"initial_jf_energy {energy_jf, error_jf}")
 logger.info(f"initial_acceptance {acceptance}")
 logger.info(f"elapsed time {t1 - t0}")
 
-for i in range(40):
+for i in range(nopt):
 
         # Compute the energy:
         energy, error, energy_jf, error_jf, acceptance, delta_p = energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction)
