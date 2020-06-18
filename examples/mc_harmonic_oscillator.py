@@ -23,11 +23,11 @@ from mlqm.optimization  import Optimizer
 sig = 0.2
 dx = 0.2
 neq = 10
-nav = 20
+nav = 10
 nprop = 10
 nvoid = 100
-nwalk = 1000
-nopt = 50
+nwalk = 100
+nopt = 4
 ndim = 3
 npart = 4
 seed = 17
@@ -36,7 +36,7 @@ omega = 1.
 delta = 0.001
 eps = 0.0001
 pot_name = 'pionless_4'
-module_load = True
+module_load = False
 
 # Module save
 model_save_path = f"./{pot_name}_nucleus_{npart}.model"
@@ -48,9 +48,9 @@ hdlr = logging.FileHandler(f'nucleus_{npart}_{pot_name}.log')
 # Add formatting to the log:
 formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
 hdlr.setFormatter(formatter)
-#ch = logging.StreamHandler()
+ch = logging.StreamHandler()
 logger.addHandler(hdlr) 
-#logger.addHandler(ch)
+logger.addHandler(ch)
 # Set the default level. Levels here: https://docs.python.org/2/library/logging.html
 logger.setLevel(logging.DEBUG)
 
@@ -71,8 +71,6 @@ logger.info(f"delta = {delta}")
 logger.info(f"eps = {eps}")
 logger.info(f"potential model = {pot_name}")
 logger.info("\n")
-
-
 
 # Initialize Seed
 torch.manual_seed(seed)
@@ -125,8 +123,6 @@ def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
 # Compute energy and accumulate estimators within a given block
             if ( (j+1) % nvoid == 0 and i >= neq ):
                 energy, energy_jf = hamiltonian.energy(wavefunction, potential, x_o)
-                energy = energy / nwalk
-                energy_jf = energy_jf / nwalk
                 energy.detach_()
                 energy_jf.detach_()
 
@@ -139,16 +135,18 @@ def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
                     dpsi_dp = torch.autograd.grad(log_wpsi[n], params, retain_graph=True)
                     dpsi_i_n = wavefunction.flatten_grad(dpsi_dp)
                     jac[n,:] = torch.t(dpsi_i_n)
-#                log_wpsi_n.detach_()
+                log_wpsi.detach_()
                 dpsi_i = torch.sum(jac, dim=0) / nwalk
                 dpsi_i = dpsi_i.view(-1,1)
-                dpsi_i_EL = torch.matmul(energy, jac).view(-1,1)
+                dpsi_i_EL = torch.matmul(energy, jac).view(-1,1) / nwalk
                 dpsi_ij = torch.mm(torch.t(jac), jac) / nwalk
+                energy = torch.mean(energy) 
+                energy_jf = torch.mean(energy_jf) 
 
 #                print("dpsi_i", dpsi_i)
 #                print("dpsi_ij", dpsi_ij)
 #                exit()
-                block_estimator.accumulate(torch.sum(energy),torch.sum(energy_jf),acceptance,1.,dpsi_i,dpsi_i_EL,dpsi_ij,1.)
+                block_estimator.accumulate(energy,energy_jf,acceptance,1.,dpsi_i,dpsi_i_EL,dpsi_ij,1.)
 # Accumulate block averages
         if ( i >= neq ):
             total_estimator.accumulate(block_estimator.energy,block_estimator.energy_jf,block_estimator.acceptance,0,block_estimator.dpsi_i,
@@ -171,6 +169,7 @@ def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
 
     return energy, error, energy_jf, error_jf, acceptance, delta_p
 
+# Call propagation once for timing purposes
 t0 = time.time()
 energy, error, energy_jf, error_jf, acceptance, delta_p = energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction)
 t1 = time.time()
@@ -179,8 +178,8 @@ logger.info(f"initial_jf_energy {energy_jf, error_jf}")
 logger.info(f"initial_acceptance {acceptance}")
 logger.info(f"elapsed time {t1 - t0}")
 
+# Optimization
 for i in range(nopt):
-
         # Compute the energy:
         energy, error, energy_jf, error_jf, acceptance, delta_p = energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction)
         
