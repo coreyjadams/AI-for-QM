@@ -41,9 +41,9 @@ class Optimizer(object):
                dist_reg = self.par_dist(dp_i, S_ij_d)
                dist_norm = self.par_dist(dp_i, dpsi_i * dpsi_i.T)
                torch.set_printoptions(precision=8)
-               logger.debug(f"dist param {dist.data}")
-               logger.debug(f"dist reg {dist_reg.data}")
-               logger.debug(f"dist norm {dist_norm.data}")
+               logger.debug(f"dist param = {dist.data}")
+               logger.debug(f"dist reg = {dist_reg.data}")
+               logger.debug(f"dist norm = {dist_norm.data}")
                dp_i = dp_i.float()
                if (dist < 0.001 and dist_norm < 0.2):
                   break

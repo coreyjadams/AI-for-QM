@@ -23,17 +23,17 @@ from mlqm.optimization  import Optimizer
 sig = 0.2
 dx = 0.2
 neq = 10
-nav = 10
+nav = 20
 nprop = 10
-nvoid = 50
-nwalk = 200
+nvoid = 100
+nwalk = 1000
 nopt = 50
 ndim = 3
 npart = 4
 seed = 17
 mass = 1.
 omega = 1.
-delta = 0.002
+delta = 0.001
 eps = 0.0001
 pot_name = 'pionless_4'
 module_load = True
@@ -44,13 +44,13 @@ model_save_path = f"./{pot_name}_nucleus_{npart}.model"
 # Set up logging:
 logger = logging.getLogger()
 # Create a file handler:
-hdlr = logging.FileHandler(f'nucleus_{npart}.log')
+hdlr = logging.FileHandler(f'nucleus_{npart}_{pot_name}.log')
 # Add formatting to the log:
 formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
 hdlr.setFormatter(formatter)
-ch = logging.StreamHandler()
+#ch = logging.StreamHandler()
 logger.addHandler(hdlr) 
-logger.addHandler(ch)
+#logger.addHandler(ch)
 # Set the default level. Levels here: https://docs.python.org/2/library/logging.html
 logger.setLevel(logging.DEBUG)
 
@@ -162,7 +162,7 @@ def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
     dpsi_i_EL = total_estimator.dpsi_i_EL
     dpsi_ij = total_estimator.dpsi_ij
 
-    logger.info(f"psi norm {torch.mean(log_wpsi)}")
+    logger.info(f"psi norm = {torch.mean(log_wpsi)}")
 
     with torch.no_grad(): 
         dp_i = opt.sr(energy,dpsi_i,dpsi_i_EL,dpsi_ij)
