@@ -26,6 +26,7 @@ class NuclearPotential(object):
         object.__init__(self)
 
     def pionless_2b(self, rr):
+        self.nwalk = rr.size()[0]
         pot_2b=torch.zeros(self.nwalk,6)
         x = self.vkr * rr
         vr = torch.exp(-x**2 / 4.0)
@@ -34,6 +35,7 @@ class NuclearPotential(object):
         return pot_2b
 
     def pionless_3b(self, rr):
+        self.nwalk = rr.size()[0]
         pot_3b = torch.zeros(self.nwalk)
         x = self.vkr * rr
         vr = torch.exp(-x**2 / 4.0)

@@ -35,6 +35,7 @@ class HarmonicOscillator_mc(object):
 
     def potential_energy(self, potential, inputs):
         "Returns potential energy"
+        
         v_ij = torch.zeros(size=[self.nwalk,6])
         gr3b = torch.zeros(size=[self.nwalk,self.npart])
         V_ijk = torch.zeros(size=[self.nwalk])
@@ -89,6 +90,8 @@ class HarmonicOscillator_mc(object):
         Returns:
             torch.tensor - Energy of shape [1]
         """
+
+        self.nwalk = inputs.size()[0]
       
         ke, ke_jf = self.kinetic_energy(wavefunction,inputs)
         pe= self.potential_energy(potential, inputs)

@@ -9,39 +9,72 @@ class Estimator(object):
             print(f"Set the following estimators: E, E2,E_jf,E2_jf,acc,weight,Psi_i,H*Psi_i,Psi_ij ")
 
     def reset(self):
-        self.energy = 0
-        self.energy2 = 0
-        self.energy_jf = 0
-        self.energy2_jf = 0
-        self.acceptance = 0
-        self.weight = 0
-        self.dpsi_i = 0
-        self.dpsi_i_EL = 0
-        self.dpsi_ij = 0
+        self.energy_blk = 0
+        self.energy_blk = 0
+        self.energy2_blk = 0
+        self.energy_jf_blk = 0
+        self.energy2_jf_blk = 0
+        self.acceptance_blk = 0
+        self.weight_blk = 0
+        self.dpsi_i_blk = 0
+        self.dpsi_i_EL_blk = 0
+        self.dpsi_ij_blk = 0
+        self.nav = 0
+        
+        self.energy_tot = 0
+        self.energy2_tot = 0
+        self.energy_jf_tot = 0
+        self.energy2_jf_tot = 0
+        self.acceptance_tot = 0
+        self.weight_tot = 0
+        self.dpsi_i_tot = 0
+        self.dpsi_i_EL_tot = 0
+        self.dpsi_ij_tot = 0
 
-    def accumulate(self,energy,energy_jf,acceptance,weight,dpsi_i,dpsi_i_EL,dpsi_ij,estim_wgt) :
-        self.energy += energy/estim_wgt
-        self.energy2 += (energy/estim_wgt)**2
-        self.energy_jf += energy_jf/estim_wgt
-        self.energy2_jf += (energy_jf/estim_wgt)**2
-        self.acceptance += acceptance/estim_wgt
-        self.weight += weight/estim_wgt
-        self.dpsi_i += dpsi_i/estim_wgt
-        self.dpsi_i_EL += dpsi_i_EL/estim_wgt
-        self.dpsi_ij += dpsi_ij/estim_wgt
+    def addval(self,energy,energy_jf,acceptance,weight,dpsi_i,dpsi_i_EL,dpsi_ij) :
+        self.energy_blk += energy * weight
+        self.energy2_blk += energy**2 * weight
+        self.energy_jf_blk += energy_jf * weight 
+        self.energy2_jf_blk += energy_jf**2 * weight
+        self.acceptance_blk += acceptance * weight
+        self.dpsi_i_blk += dpsi_i * weight 
+        self.dpsi_i_EL_blk += dpsi_i_EL * weight 
+        self.dpsi_ij_blk += dpsi_ij * weight
+        self.weight_blk += weight
 
-    def finalize(self,nav):
-        self.energy /= nav
-        self.energy2 /= nav
-        self.energy_jf /= nav
-        self.energy2_jf /= nav
-        self.acceptance /= nav
-        self.dpsi_i /= nav
-        self.dpsi_i_EL /= nav
-        self.dpsi_ij /= nav
-        error= torch.sqrt((self.energy2 - self.energy**2) / (nav-1))
-        error_jf = torch.sqrt((self.energy2_jf - self.energy_jf**2) / (nav-1))
-        return error, error_jf
+    def addblk(self) :
+        self.energy_tot += self.energy_blk / self.weight_blk
+        self.energy2_tot += (self.energy_blk / self.weight_blk)**2
+        self.energy_jf_tot += self.energy_jf_blk / self.weight_blk
+        self.energy2_jf_tot += (self.energy_jf_blk / self.weight_blk)**2
+        self.acceptance_tot += self.acceptance_blk / self.weight_blk
+        self.dpsi_i_tot += self.dpsi_i_blk / self.weight_blk
+        self.dpsi_i_EL_tot += self.dpsi_i_EL_blk / self.weight_blk
+        self.dpsi_ij_tot += self.dpsi_ij_blk / self.weight_blk
+        self.energy_blk = 0
+        self.energy_blk = 0
+        self.energy2_blk = 0
+        self.energy_jf_blk = 0
+        self.energy2_jf_blk = 0
+        self.acceptance_blk = 0
+        self.weight_blk = 0
+        self.dpsi_i_blk = 0
+        self.dpsi_i_EL_blk = 0
+        self.dpsi_ij_blk = 0
+        self.nav += 1
+
+    def average(self):
+        self.energy = self.energy_tot / self.nav
+        self.energy2 = self.energy2_tot / self.nav
+        self.energy_jf = self.energy_jf_tot / self.nav
+        self.energy2_jf = self.energy2_jf_tot / self.nav
+        self.acceptance = self.acceptance_tot / self.nav
+        self.dpsi_i = self.dpsi_i_tot / self.nav
+        self.dpsi_i_EL = self.dpsi_i_EL_tot / self.nav
+        self.dpsi_ij = self.dpsi_ij_tot / self.nav
+        self.error= torch.sqrt((self.energy2 - self.energy**2) / (self.nav-1))
+        self.error_jf = torch.sqrt((self.energy2_jf - self.energy_jf**2) / (self.nav-1))
+        return self.error, self.error_jf
 
 
 

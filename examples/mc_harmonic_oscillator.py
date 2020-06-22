@@ -27,7 +27,7 @@ nav = 10
 nprop = 10
 nvoid = 100
 nwalk = 100
-nopt = 4
+nopt = 40
 ndim = 3
 npart = 4
 seed = 17
@@ -37,6 +37,7 @@ delta = 0.001
 eps = 0.0001
 pot_name = 'pionless_4'
 module_load = False
+module_write = False
 
 # Module save
 model_save_path = f"./{pot_name}_nucleus_{npart}.model"
@@ -99,16 +100,14 @@ if module_load:
 def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
     nblock = neq + nav
     nstep = nprop * nvoid
-    block_estimator = Estimator(info=None)
-    block_estimator.reset()
-    total_estimator = Estimator(info=None)
-    total_estimator.reset()
+    estimator = Estimator(info=None)
+    estimator.reset()
 # Sample initial configurations uniformy between -sig and sig
     x_o = torch.normal(0., sig, size=[nwalk, npart, ndim])
+#    x_s = []    
     for i in range (nblock):
-        block_estimator.reset()
         if (i == neq) :
-           total_estimator.reset()
+           estimator.reset()
         for j in range (nstep):
             with torch.no_grad(): 
                 log_wpsi_o = wavefunction(x_o)
@@ -122,51 +121,64 @@ def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
                 acceptance = torch.mean(accept.float())
 # Compute energy and accumulate estimators within a given block
             if ( (j+1) % nvoid == 0 and i >= neq ):
+
+#                print("x_s before=", x_s)
+#                print("x_o=", x_o)
+#                x_s = torch.cat((x_o, x_s), 0)
+#                x_s.append(x_o)
+#                print("x_s after=", torch.cat(x_s,dim=0))
+#                exit()
                 energy, energy_jf = hamiltonian.energy(wavefunction, potential, x_o)
                 energy.detach_()
                 energy_jf.detach_()
 
 # Compute < O^i >, < H O^i >,  and < O^i O^j > 
-                log_wpsi = wavefunction(x_o)
-                jac = torch.zeros(size=[nwalk,wavefunction.npt])
-                for n in range(nwalk):
-                    wavefunction.zero_grad()
-                    params = wavefunction.parameters()
-                    dpsi_dp = torch.autograd.grad(log_wpsi[n], params, retain_graph=True)
-                    dpsi_i_n = wavefunction.flatten_grad(dpsi_dp)
-                    jac[n,:] = torch.t(dpsi_i_n)
-                log_wpsi.detach_()
-                dpsi_i = torch.sum(jac, dim=0) / nwalk
-                dpsi_i = dpsi_i.view(-1,1)
-                dpsi_i_EL = torch.matmul(energy, jac).view(-1,1) / nwalk
-                dpsi_ij = torch.mm(torch.t(jac), jac) / nwalk
+                if (nopt > 0):
+                    log_wpsi = wavefunction(x_o)
+                    jac = torch.zeros(size=[nwalk,wavefunction.npt])
+                    for n in range(nwalk):
+                        wavefunction.zero_grad()
+                        params = wavefunction.parameters()
+                        dpsi_dp = torch.autograd.grad(log_wpsi[n], params, retain_graph=True)
+                        dpsi_i_n = wavefunction.flatten_grad(dpsi_dp)
+                        jac[n,:] = torch.t(dpsi_i_n)
+                    log_wpsi.detach_()
+                    dpsi_i = torch.sum(jac, dim=0) / nwalk
+                    dpsi_i = dpsi_i.view(-1,1)
+                    dpsi_i_EL = torch.matmul(energy, jac).view(-1,1) / nwalk
+                    dpsi_ij = torch.mm(torch.t(jac), jac) / nwalk
+                else:
+                    dpsi_i = 0
+                    dpsi_i_EL = 0
+                    dpsi_ij = 0
                 energy = torch.mean(energy) 
                 energy_jf = torch.mean(energy_jf) 
-
-#                print("dpsi_i", dpsi_i)
-#                print("dpsi_ij", dpsi_ij)
-#                exit()
-                block_estimator.accumulate(energy,energy_jf,acceptance,1.,dpsi_i,dpsi_i_EL,dpsi_ij,1.)
+                estimator.addval(energy,energy_jf,acceptance,1.,dpsi_i,dpsi_i_EL,dpsi_ij)
 # Accumulate block averages
         if ( i >= neq ):
-            total_estimator.accumulate(block_estimator.energy,block_estimator.energy_jf,block_estimator.acceptance,0,block_estimator.dpsi_i,
-                block_estimator.dpsi_i_EL,block_estimator.dpsi_ij,block_estimator.weight)
+            estimator.addblk()
 
-    error, error_jf = total_estimator.finalize(nav)
-    energy = total_estimator.energy
-    energy_jf = total_estimator.energy_jf
-    acceptance = total_estimator.acceptance
-    dpsi_i = total_estimator.dpsi_i
-    dpsi_i_EL = total_estimator.dpsi_i_EL
-    dpsi_ij = total_estimator.dpsi_ij
+    error, error_jf = estimator.average()
+    energy = estimator.energy
+    energy_jf = estimator.energy_jf
+    acceptance = estimator.acceptance
+    dpsi_i = estimator.dpsi_i
+    dpsi_i_EL = estimator.dpsi_i_EL
+    dpsi_ij = estimator.dpsi_ij
 
-    logger.info(f"psi norm = {torch.mean(log_wpsi)}")
-
-    with torch.no_grad(): 
-        dp_i = opt.sr(energy,dpsi_i,dpsi_i_EL,dpsi_ij)
-        gradient = wavefunction.recover_flattened(dp_i, indeces_flat, wavefunction)
-        delta_p = [ g for g in gradient]
-
+    logger.info(f"psi norm = {torch.mean(log_wpsi_o)}")
+    if (nopt > 0) :
+        with torch.no_grad(): 
+            dp_i = opt.sr(energy,dpsi_i,dpsi_i_EL,dpsi_ij)
+            gradient = wavefunction.recover_flattened(dp_i, indeces_flat, wavefunction)
+            delta_p = [ g for g in gradient]
+    else:
+        delta_p = 0
+#    x_s = torch.cat(x_s,dim=0)
+#    energy_s, energy_jf_s = hamiltonian.energy(wavefunction, potential, x_s)
+#    print("energy_s=",torch.mean(energy_s).data)
+#    print("energy=",energy.data)
+#    exit()
     return energy, error, energy_jf, error_jf, acceptance, delta_p
 
 # Call propagation once for timing purposes
@@ -192,5 +204,7 @@ for i in range(nopt):
             logger.info(f"acc = {acceptance.data:.3f}")
 
 # This saves the model:
-torch.save(wavefunction.state_dict(), model_save_path)
+if  module_write:
+    torch.save(wavefunction.state_dict(), model_save_path)
+
 
