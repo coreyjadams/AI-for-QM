@@ -11,7 +11,7 @@ class NeuralWavefunction(torch.nn.Module):
     Extends:
         torch.nn.Module
     """
-    def __init__(self, ndim : int, npart: int, boundary_condition :torch.nn.Module = None):
+    def __init__(self, ndim, npart, conf):
         torch.nn.Module.__init__(self)
         
         self.ndim = ndim
@@ -19,12 +19,7 @@ class NeuralWavefunction(torch.nn.Module):
 #            raise Exception("Dimension must be 1, 2, or 3 for NeuralWavefunction")
 
         self.npart = npart
-        
-        # Create a boundary condition if needed:
-#        if boundary_condition is None:
-#            self.bc = ExponentialBoundaryCondition(self.ndim)
-#        else:
-#            self.bc = boundary_condition
+        self.conf = conf
 
         self.layer1 = torch.nn.Linear(self.ndim * self.npart, 64)
         self.layer2 = torch.nn.Linear(64, 64)
@@ -51,7 +46,7 @@ class NeuralWavefunction(torch.nn.Module):
         x = torch.nn.functional.softplus(x, beta=1.)
         x = self.layer3(x)
         x = x.view([x.shape[0],])
-        x = x - torch.sum( 0.1 * xinputs**2, dim=(1,2))
+        x = x - self.conf * torch.sum( xinputs**2, dim=(1,2) )
         result = x
         return result
 

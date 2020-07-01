@@ -29,7 +29,7 @@ class NuclearPotential(object):
         self.nwalk = rr.size()[0]
         pot_2b=torch.zeros(self.nwalk,6)
         x = self.vkr * rr
-        vr = torch.exp(-x**2 / 4.0)
+        vr = torch.exp( -x**2 / 4.0 )
         pot_2b[:,0] = self.v0r * vr
         pot_2b[:,2] = self.v0s * vr
         return pot_2b
@@ -38,7 +38,7 @@ class NuclearPotential(object):
         self.nwalk = rr.size()[0]
         pot_3b = torch.zeros(self.nwalk)
         x = self.vkr * rr
-        vr = torch.exp(-x**2 / 4.0)
+        vr = torch.exp( -x**2 / 4.0 )
         pot_3b = self.ar3b * vr
         return pot_3b
 

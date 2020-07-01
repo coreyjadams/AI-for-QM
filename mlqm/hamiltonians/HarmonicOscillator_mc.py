@@ -1,5 +1,5 @@
 import torch
-import numpy
+import numpy as np
 
 from mlqm import H_BAR
 
@@ -10,7 +10,7 @@ class HarmonicOscillator_mc(object):
     Implementation of the quantum harmonic oscillator hamiltonian
     """
 
-    def __init__(self, M : float, omega : float, nwalk : int, ndim : int, npart : int):
+    def __init__(self, mass : float, hbar : float, nwalk : int, ndim : int, npart : int):
 
         object.__init__(self)
 
@@ -18,8 +18,9 @@ class HarmonicOscillator_mc(object):
         if self.ndim < 1 or self.ndim > 3: 
             raise Exception("Dimension must be 1, 2, or 3")
 
-        self.M = M
-        self.omega = omega
+        self.mass = mass
+        self.hbar = hbar
+        self.hbar2m = self.hbar**2 / self.mass / 2.
         self.nwalk = nwalk
         self.npart = npart
 
@@ -32,6 +33,18 @@ class HarmonicOscillator_mc(object):
         self.pe = None
         self.ke = None
         self.ke_jf= None
+
+        self.nrho = 100
+        self.rho_min = 0.
+        self.rho_max= 5.
+        self.r_rho = torch.linspace(self.rho_min, self.rho_max, steps=self.nrho+1)
+        self.v_rho = torch.zeros(size = [self.nrho])
+        for i in range (self.nrho):
+            self.v_rho[i] = self.r_rho[i+1]**3 - self.r_rho[i]**3
+        self.v_rho = 4./3. * np.pi * self.v_rho
+#        print("self.r_rho", self.r_rho)
+#        print("self.v_rho", self.v_rho)
+#        exit()
 
     def potential_energy(self, potential, inputs):
         "Returns potential energy"
@@ -63,8 +76,8 @@ class HarmonicOscillator_mc(object):
         
         d_log_psi = torch.autograd.grad(log_psi, inputs, vt, create_graph=True, retain_graph=True)[0]
         d_psi = d_log_psi
-        self.ke_jf = torch.sum(d_psi**2, (1,2)) / 2. 
-        self.ke_jf = self.ke_jf * 197.327**2 / 938.95
+        self.ke_jf = torch.sum(d_psi**2, (1,2))
+        self.ke_jf = self.ke_jf * self.hbar2m
         
         self.ke = 0
         for i in range (self.ndim):
@@ -73,13 +86,13 @@ class HarmonicOscillator_mc(object):
                 d2_log_psi = torch.autograd.grad(d_log_psi_ij, inputs, vt, retain_graph=True)[0]
                 d2_log_psi_ii_jj = d2_log_psi[:,j,i]
                 d2_psi_ij = d2_log_psi_ii_jj + d_log_psi_ij**2
-                self.ke -= d2_psi_ij / 2.
-        self.ke = self.ke * 197.327**2 / 938.95
+                self.ke -= d2_psi_ij
+        self.ke = self.ke * self.hbar2m
         inputs.requires_grad_(False)
         return self.ke, self.ke_jf
 
     def energy(self, wavefunction, potential, inputs):
-        """Compute the expectation valye of energy of the supplied wavefunction.
+        """Computes the expectation value of energy of the supplied wavefunction.
         
         Computes the integral of the wavefunction in this potential
         
@@ -102,6 +115,29 @@ class HarmonicOscillator_mc(object):
 
  
         return energy, energy_jf
+
+
+    def density(self, inputs):
+        """Computes the expectation value of the single-nucleon density
+        """
+        
+        mean = torch.mean(inputs, dim=1)
+        xinputs = inputs - mean[:,None,:]
+        rinputs = torch.sqrt(torch.sum(xinputs**2,dim=2))
+        rho = torch.histc(rinputs, bins=self.nrho, min=self.rho_min, max=self.rho_max) 
+        rho = rho / self.v_rho
+        return rho
+
+    def density_print(self, rho, error_rho):
+
+        print("rho")
+        for i in range (self.nrho):
+            print((self.r_rho[i].item()+self.r_rho[i+1].item())/2.,rho[i].item(),error_rho[i].item())
+        return
+        
+
+
+
 
 
 

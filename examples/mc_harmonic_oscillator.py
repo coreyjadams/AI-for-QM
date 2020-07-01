@@ -25,19 +25,23 @@ dx = 0.2
 neq = 10
 nav = 10
 nprop = 10
-nvoid = 100
-nwalk = 100
+nvoid = 200
+nwalk = 200
 nopt = 40
 ndim = 3
 npart = 4
 seed = 17
-mass = 1.
-omega = 1.
+mass = 938.95
+hbar = 197.327
 delta = 0.001
 eps = 0.0001
+conf = 0.1
 pot_name = 'pionless_4'
 module_load = False
 module_write = False
+
+#torch.set_default_tensor_type(torch.DoubleTensor)
+#torch.set_default_dtype(torch.float64)
 
 # Module save
 model_save_path = f"./{pot_name}_nucleus_{npart}.model"
@@ -45,7 +49,7 @@ model_save_path = f"./{pot_name}_nucleus_{npart}.model"
 # Set up logging:
 logger = logging.getLogger()
 # Create a file handler:
-hdlr = logging.FileHandler(f'nucleus_{npart}_{pot_name}.log')
+hdlr = logging.FileHandler(f'{pot_name}_nucleus_{npart}.log')
 # Add formatting to the log:
 formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
 hdlr.setFormatter(formatter)
@@ -67,9 +71,10 @@ logger.info(f"ndim = {ndim}")
 logger.info(f"npart = {npart}")
 logger.info(f"seed = {seed}")
 logger.info(f"mass = {mass}")
-logger.info(f"omega = {omega}")
+logger.info(f"hbar = {hbar}")
 logger.info(f"delta = {delta}")
 logger.info(f"eps = {eps}")
+logger.info(f"conf = {conf}")
 logger.info(f"potential model = {pot_name}")
 logger.info("\n")
 
@@ -77,14 +82,15 @@ logger.info("\n")
 torch.manual_seed(seed)
 
 # Initialize neural wave function and compute the number of parameters
-wavefunction = NeuralWavefunction(ndim, npart)
+wavefunction = NeuralWavefunction(ndim, npart, conf)
 wavefunction.count_parameters()
+#wavefunction.double()
 
 # Initialize Potential
 potential = NuclearPotential(nwalk, pot_name)
 
 # Initialize Hamiltonian 
-hamiltonian =  HarmonicOscillator_mc(mass, omega, nwalk, ndim, npart)
+hamiltonian =  HarmonicOscillator_mc(mass, hbar, nwalk, ndim, npart)
 
 #Initialize Optimizer
 opt=Optimizer(delta,eps,wavefunction.npt)
@@ -100,11 +106,11 @@ if module_load:
 def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
     nblock = neq + nav
     nstep = nprop * nvoid
-    estimator = Estimator(info=None)
+    estimator = Estimator(nopt, info=None)
     estimator.reset()
 # Sample initial configurations uniformy between -sig and sig
     x_o = torch.normal(0., sig, size=[nwalk, npart, ndim])
-#    x_s = []    
+    x_s = []    
     for i in range (nblock):
         if (i == neq) :
            estimator.reset()
@@ -125,12 +131,16 @@ def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
 #                print("x_s before=", x_s)
 #                print("x_o=", x_o)
 #                x_s = torch.cat((x_o, x_s), 0)
-#                x_s.append(x_o)
+                x_s.append(x_o)
 #                print("x_s after=", torch.cat(x_s,dim=0))
 #                exit()
                 energy, energy_jf = hamiltonian.energy(wavefunction, potential, x_o)
                 energy.detach_()
                 energy_jf.detach_()
+                if ( nopt == 0 ):
+                    rho = hamiltonian.density(x_o) / nwalk
+                else:
+                    rho = 0
 
 # Compute < O^i >, < H O^i >,  and < O^i O^j > 
                 if (nopt > 0):
@@ -153,18 +163,23 @@ def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
                     dpsi_ij = 0
                 energy = torch.mean(energy) 
                 energy_jf = torch.mean(energy_jf) 
-                estimator.addval(energy,energy_jf,acceptance,1.,dpsi_i,dpsi_i_EL,dpsi_ij)
+                estimator.addval(energy,energy_jf,acceptance,1.,dpsi_i,dpsi_i_EL,dpsi_ij,rho)
+
 # Accumulate block averages
         if ( i >= neq ):
             estimator.addblk()
 
-    error, error_jf = estimator.average()
+    error, error_jf, error_rho = estimator.average()
     energy = estimator.energy
     energy_jf = estimator.energy_jf
     acceptance = estimator.acceptance
     dpsi_i = estimator.dpsi_i
     dpsi_i_EL = estimator.dpsi_i_EL
     dpsi_ij = estimator.dpsi_ij
+    rho = estimator.rho
+
+    if (nopt == 0 ):
+        hamiltonian.density_print(rho, error_rho)
 
     logger.info(f"psi norm = {torch.mean(log_wpsi_o)}")
     if (nopt > 0) :
@@ -174,10 +189,11 @@ def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
             delta_p = [ g for g in gradient]
     else:
         delta_p = 0
-#    x_s = torch.cat(x_s,dim=0)
-#    energy_s, energy_jf_s = hamiltonian.energy(wavefunction, potential, x_s)
-#    print("energy_s=",torch.mean(energy_s).data)
-#    print("energy=",energy.data)
+
+    x_s = torch.cat(x_s,dim=0)
+    energy_s, energy_jf_s = hamiltonian.energy(wavefunction, potential, x_s)
+    print("energy_s=",torch.mean(energy_s).data)
+    print("energy=",energy.data)
 #    exit()
     return energy, error, energy_jf, error_jf, acceptance, delta_p
 

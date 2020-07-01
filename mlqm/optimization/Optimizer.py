@@ -7,7 +7,7 @@ logger = logging.getLogger()
 
 class Optimizer(object):
 
-    def __init__(self,delta,eps,npt):
+    def __init__(self, delta, eps, npt):
         self.eps=eps
         self.delta=delta
         self.npt=npt
@@ -25,7 +25,6 @@ class Optimizer(object):
             S_ij_d = torch.clone(torch.detach(S_ij)).double()
             S_ij_d += 2**i * self.eps * torch.eye(self.npt)
             i += 1
-            det_test = torch.det(S_ij_d)
             torch.set_printoptions(precision=8)
             try:
                U_ij = torch.cholesky(S_ij_d, upper=True, out=None)
