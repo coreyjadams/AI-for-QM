@@ -27,7 +27,7 @@ nav = 10
 nprop = 10
 nvoid = 200
 nwalk = 200
-nopt = 40
+nopt = 100
 ndim = 3
 npart = 4
 seed = 17
@@ -40,8 +40,8 @@ pot_name = 'pionless_4'
 module_load = False
 module_write = False
 
-#torch.set_default_tensor_type(torch.DoubleTensor)
-#torch.set_default_dtype(torch.float64)
+torch.set_default_tensor_type(torch.DoubleTensor)
+torch.set_default_dtype(torch.float64)
 
 # Module save
 model_save_path = f"./{pot_name}_nucleus_{npart}.model"
@@ -76,7 +76,7 @@ logger.info(f"delta = {delta}")
 logger.info(f"eps = {eps}")
 logger.info(f"conf = {conf}")
 logger.info(f"potential model = {pot_name}")
-logger.info("\n")
+#logger.info("\n")
 
 # Initialize Seed
 torch.manual_seed(seed)
@@ -84,7 +84,7 @@ torch.manual_seed(seed)
 # Initialize neural wave function and compute the number of parameters
 wavefunction = NeuralWavefunction(ndim, npart, conf)
 wavefunction.count_parameters()
-#wavefunction.double()
+wavefunction.double()
 
 # Initialize Potential
 potential = NuclearPotential(nwalk, pot_name)
@@ -192,24 +192,24 @@ def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
 
     x_s = torch.cat(x_s,dim=0)
     energy_s, energy_jf_s = hamiltonian.energy(wavefunction, potential, x_s)
-    print("energy_s=",torch.mean(energy_s).data)
-    print("energy=",energy.data)
-#    exit()
+    logger.info(f"energy_s = {torch.mean(energy_s).data:.3f}")
     return energy, error, energy_jf, error_jf, acceptance, delta_p
 
 # Call propagation once for timing purposes
-t0 = time.time()
-energy, error, energy_jf, error_jf, acceptance, delta_p = energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction)
-t1 = time.time()
-logger.info(f"initial_energy {energy, error}")
-logger.info(f"initial_jf_energy {energy_jf, error_jf}")
-logger.info(f"initial_acceptance {acceptance}")
-logger.info(f"elapsed time {t1 - t0}")
+#t0 = time.time()
+#energy, error, energy_jf, error_jf, acceptance, delta_p = energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction)
+#t1 = time.time()
+#logger.info(f"initial_energy {energy, error}")
+#logger.info(f"initial_jf_energy {energy_jf, error_jf}")
+#logger.info(f"initial_acceptance {acceptance}")
+#logger.info(f"elapsed time {t1 - t0}")
 
 # Optimization
 for i in range(nopt):
         # Compute the energy:
+        t0 = time.time()
         energy, error, energy_jf, error_jf, acceptance, delta_p = energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction)
+        t1 = time.time()
         
         for (p, dp) in zip (wavefunction.parameters(),delta_p):
             p.data = p.data + dp 
@@ -218,6 +218,8 @@ for i in range(nopt):
             logger.info(f"step = {i}, energy = {energy.data:.3f}, err = {error.data:.3f}")
             logger.info(f"step = {i}, energy_jf = {energy_jf.data:.3f}, err = {error_jf.data:.3f}")
             logger.info(f"acc = {acceptance.data:.3f}")
+            logger.info(f"elapsed time {t1 - t0:.3f}")
+            
 
 # This saves the model:
 if  module_write:
