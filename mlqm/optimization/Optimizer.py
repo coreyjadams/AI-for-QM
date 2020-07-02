@@ -17,15 +17,14 @@ class Optimizer(object):
         dist = torch.sum(D_ij.flatten())
         return dist
 
-    def sr(self,energy,dpsi_i,dpsi_i_EL,dpsi_ij):
-        f_i= (self.delta * ( dpsi_i * energy - dpsi_i_EL )).double()
+    def sr(self, energy, dpsi_i, dpsi_i_EL, dpsi_ij):
+        f_i= (self.delta * ( dpsi_i * energy - dpsi_i_EL ))
         S_ij = dpsi_ij - dpsi_i * dpsi_i.T
         i = 0
         while True:
-            S_ij_d = torch.clone(torch.detach(S_ij)).double()
+            S_ij_d = torch.clone(torch.detach(S_ij))
             S_ij_d += 2**i * self.eps * torch.eye(self.npt)
             i += 1
-            torch.set_printoptions(precision=8)
             try:
                U_ij = torch.cholesky(S_ij_d, upper=True, out=None)
                positive_definite = True
@@ -39,11 +38,10 @@ class Optimizer(object):
                dist = self.par_dist(dp_i, S_ij)
                dist_reg = self.par_dist(dp_i, S_ij_d)
                dist_norm = self.par_dist(dp_i, dpsi_i * dpsi_i.T)
-               torch.set_printoptions(precision=8)
+               torch.set_printoptions(precision=6)
                logger.debug(f"dist param = {dist.data}")
                logger.debug(f"dist reg = {dist_reg.data}")
                logger.debug(f"dist norm = {dist_norm.data}")
-               dp_i = dp_i.float()
                if (dist < 0.001 and dist_norm < 0.2):
                   break
         return dp_i

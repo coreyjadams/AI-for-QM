@@ -27,7 +27,7 @@ nav = 10
 nprop = 10
 nvoid = 200
 nwalk = 200
-nopt = 100
+nopt = 10
 ndim = 3
 npart = 4
 seed = 17
@@ -183,10 +183,10 @@ def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
 
     logger.info(f"psi norm = {torch.mean(log_wpsi_o)}")
     if (nopt > 0) :
-        with torch.no_grad(): 
-            dp_i = opt.sr(energy,dpsi_i,dpsi_i_EL,dpsi_ij)
-            gradient = wavefunction.recover_flattened(dp_i, indeces_flat, wavefunction)
-            delta_p = [ g for g in gradient]
+#        with torch.no_grad(): 
+       dp_i = opt.sr(energy,dpsi_i,dpsi_i_EL,dpsi_ij)
+       gradient = wavefunction.recover_flattened(dp_i, indeces_flat, wavefunction)
+       delta_p = [ g for g in gradient]
     else:
         delta_p = 0
 
