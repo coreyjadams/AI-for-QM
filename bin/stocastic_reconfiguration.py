@@ -5,26 +5,7 @@ import time
 
 import argparse
 
-
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
-import tensorflow as tf
-#
-# try:
-#     import horovod.tensorflow as hvd
-#     hvd.init()
-#     from mpi4py import MPI
-#
-#     # This is to force each rank onto it's own GPU:
-#     os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank() + 1)
-#     MPI_AVAILABLE=True
-# except:
-#     MPI_AVAILABLE=False
-
-# Use mixed precision for inference (metropolis walk)
-# from tensorflow.keras.mixed_precision import experimental as mixed_precision
-# policy = mixed_precision.Policy('mixed_float16')
-# mixed_precision.set_policy(policy)
+from jax import numpy, jit, random
 
 import logging
 logger = logging.getLogger()
@@ -35,7 +16,7 @@ handler = logging.StreamHandler(sys.stdout)
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 handler.setFormatter(formatter)
 logger.addHandler(handler)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 
 # Add the local folder to the import path:
@@ -87,6 +68,8 @@ class exec(object):
         self.delta           = float(optimization['delta'])
         self.eps             = float(optimization['eps'])
 
+        self.key = random.PRNGKey(int(self.config['General']['seed']))
+
 
         self.dimension  = int(self.config['General']['dimension'])
         self.nparticles = int(self.config['General']['nparticles'])
@@ -108,17 +91,6 @@ class exec(object):
                 raise Exception(f"Configuration for Sampler missing key {key}")
 
         self.nwalkers   = int(sampler['nwalkers'])
-        # As an optimization, we increase the number of walkers by
-        # naverage * nobservations
-        self.nwalkers *= self.naverages * self.nobservations
-
-        # if MPI_AVAILABLE and self.size != 1:
-        #     # Scale down the number of walkers:
-        #     nwalkers = int(self.nwalkers / self.size)
-        #     if self.nwalkers / self.size != nwalkers:
-        #         logger.error("ERROR: number of walkers is not evenly divided by MPI COMM size")
-        #
-        #     self.nwalkers = nwalkers
 
 
         from mlqm.samplers import MetropolisSampler
@@ -127,9 +99,9 @@ class exec(object):
             n           = self.dimension,
             nparticles  = self.nparticles,
             nwalkers    = self.nwalkers,
-            initializer = tf.random.normal,
+            initializer = random.normal,
             init_params = {"mean": 0.0, "stddev" : 0.2},
-            dtype       = DEFAULT_TENSOR_TYPE)
+            rng_key     = self.key)
 
         return
 
@@ -145,16 +117,14 @@ class exec(object):
         kind = self.config["Hamiltonian"]["form"]
         if kind == "HarmonicOscillator":
 
-            from mlqm.hamiltonians import HarmonicOscillator
+            from mlqm.hamiltonians import HarmonicOscillatorEnergy
 
-            required_keys = ["mass", "omega"]
-            self.check_potential_parameters(kind, required_keys, self.config["Hamiltonian"])
+            self.m      = float(self.config["Hamiltonian"]["mass"]),
+            self.omega  = float(self.config["Hamiltonian"]["omega"])
 
+            # Capture the function
+            self.hamiltonian = HarmonicOscillatorEnergy
 
-            self.hamiltonian = HarmonicOscillator(
-                M           = float(self.config["Hamiltonian"]["mass"]),
-                omega       = float(self.config["Hamiltonian"]["omega"]),
-            )
         elif kind == "AtomicPotential":
             from mlqm.hamiltonians import AtomicPotential
 
@@ -180,17 +150,27 @@ class exec(object):
             raise Exception(f"Unknown potential requested: {kind}")
 
     def run(self):
-        tf.keras.backend.set_floatx(DEFAULT_TENSOR_TYPE)
+
         x = self.sampler.sample()
 
         # For each dimension, randomly pick a degree
         degree = [ 1 for d in range(self.dimension)]
 
-        from mlqm.models import DeepSetsWavefunction
-        self.wavefunction = DeepSetsWavefunction(self.dimension, self.nparticles)
+
+        from mlqm.models import create_DeepSetsState, DeepSetsWavefunction
+        self.wavefunction_state = create_DeepSetsState(
+            ndim       = self.dimension,
+            nparticles = self.nparticles,
+            rng_key    = self.key,
+        )
+
+
+        self.wavefunction = DeepSetsWavefunction
 
         # Run the wave function once to initialize all it's weights
-        _ = self.wavefunction(x)
+        initial_wavefunction = self.wavefunction(x, self.wavefunction_state)
+
+        print(initial_wavefunction.shape)
 
         # We attempt to restore the weights:
         try:
@@ -215,10 +195,11 @@ class exec(object):
         # Create an optimizer
         self.optimizer = Optimizer(
             delta   = self.delta,
-            eps     = self.eps,
-            npt     = self.wavefunction.n_parameters())
+            eps     = self.eps)
 
-        energy, energy_by_parts = self.hamiltonian.energy(self.wavefunction, x)
+        # energy, energy_by_parts = self.hamiltonian.energy(self.wavefunction, x)
+        energy, energy_by_parts = self.hamiltonian(
+            self.wavefunction, self.wavefunction_state, x, self.m, self.omega)
 
         for i in range(self.iterations):
             start = time.time()
@@ -240,7 +221,6 @@ class exec(object):
                 logger.info(f"time = {time.time() - start:.3f}")
 
 
-    @tf.function
     def jacobian(self, x_current, wavefunction):
         tape = tf.GradientTape()
 
@@ -263,7 +243,6 @@ class exec(object):
 
         return flattened_jacobian, flat_shape
 
-    @tf.function
     def compute_O_observables(self, flattened_jacobian, energy):
 
         # dspi_i is the reduction of the jacobian over all walkers.

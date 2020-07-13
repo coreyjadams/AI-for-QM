@@ -1,6 +1,6 @@
-import tensorflow as tf
-import numpy
-
+import time
+from jax import jit, numpy, random
+# import jax
 
 
 class MetropolisSampler(object):
@@ -16,7 +16,8 @@ class MetropolisSampler(object):
         nparticles  : int,
         initializer : callable,
         init_params : iter ,
-        dtype       = tf.float64):
+        rng_key     : random.PRNGKey,
+        dtype       = "float64"):
         '''Initialize a metropolis sampler
 
         Create a metropolis walker with `n` walkers.  Can use normal, uniform
@@ -27,6 +28,8 @@ class MetropolisSampler(object):
             initializer {callable} -- Function to call to initialize each walker
             init_params {iter} -- Parameters to pass to the initializer, unrolled automatically
         '''
+
+        
 
         # Set the dimension:
         self.n = n
@@ -42,7 +45,11 @@ class MetropolisSampler(object):
         self.dtype = dtype
 
         #  Run the initalize to get the first locations:
-        self.walkers = initializer(shape=self.size, **init_params, dtype=dtype)
+        key, subkey = random.split(rng_key)
+        self.walkers = initializer(subkey, shape=self.size, dtype=dtype)
+        stddev = init_params['stddev'] if 'stddev' in init_params else 1.0
+        mean   = init_params['mean']   if 'mean'   in init_params else 0.0
+        self.walkers = stddev * self.walkers + mean
 
     def sample(self):
         '''Just return the current locations
@@ -52,7 +59,7 @@ class MetropolisSampler(object):
         return  self.walkers
 
     def kick(self,
-        wavefunction : tf.keras.models.Model,
+        wavefunction : callable,
         kicker : callable,
         kicker_params : iter,
         nkicks : int ):
@@ -75,15 +82,15 @@ class MetropolisSampler(object):
         # Send back the acceptance:
         return acceptance
 
-    @tf.function
+    @jit
     # @profile
     def internal_kicker(self,
         shape,
         walkers,
-        wavefunction : tf.keras.models.Model,
+        wavefunction : callable,
         kicker : callable,
         kicker_params : iter,
-        nkicks : tf.constant,
+        nkicks : int,
         dtype):
         """Sample points in N-d Space
 
@@ -97,12 +104,11 @@ class MetropolisSampler(object):
 
         # We need to compute the wave function twice:
         # Once for the original coordiate, and again for the kicked coordinates
-        acceptance = tf.convert_to_tensor(0.0)
         # Calculate the current wavefunction value:
         current_wavefunction = wavefunction(walkers)
 
         # Generate a long set of random number from which we will pull:
-        random_numbers = tf.math.log(tf.random.uniform(shape = [nkicks,shape[0],1], dtype=dtype))
+        random_numbers = numpy.log(jax.random.uniform(shape = [nkicks,shape[0],1], dtype=dtype))
 
         for i_kick in tf.range(nkicks):
             # Create a kick:
@@ -126,14 +132,14 @@ class MetropolisSampler(object):
             # accept      = probability >  tf.math.log(tf.random.uniform(shape=[shape[0],1]))
 
             # Grab the kicked wavefunction in the places it is new, to speed up metropolis:
-            current_wavefunction = tf.where(accept, kicked_wavefunction, current_wavefunction)
+            current_wavefunction = numpy.where(accept, kicked_wavefunction, current_wavefunction)
 
             # We need to broadcast accept to match the right shape
             # Needs to come out to the shape [nwalkers, nparticles, ndim]
-            accept = tf.tile(accept, [1,tf.reduce_prod(shape[1:])])
-            accept = tf.reshape(accept, shape)
-            walkers = tf.where(accept, kicked, walkers)
+            accept = numpy.tile(accept, [1,numpy.reduce_prod(shape[1:])])
+            accept = numpy.reshape(accept, shape)
+            walkers = numpy.where(accept, kicked, walkers)
 
-            acceptance = tf.reduce_mean(tf.cast(accept, tf.float32))
+            acceptance = numpy.reduce_mean(numpy.cast(accept, dtype))
 
         return walkers, acceptance

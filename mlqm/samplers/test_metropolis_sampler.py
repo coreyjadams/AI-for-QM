@@ -1,6 +1,6 @@
 import pytest
-import numpy
-import tensorflow as tf
+from jax import numpy
+
 
 from .MetropolisSampler import MetropolisSampler
 

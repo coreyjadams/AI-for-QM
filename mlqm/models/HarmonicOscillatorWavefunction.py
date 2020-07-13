@@ -1,134 +1,139 @@
-import tensorflow as tf
-import numpy
-
-from .GaussianBoundaryCondition import GaussianBoundaryCondition
+from jax import numpy, jit
+import jax
 
 
-class HarmonicOscillatorWavefunction(tf.keras.layers.Layer):
-    """Implememtation of the harmonic oscillator wave funtions
 
-    Create a polynomial, up to `degree` in every dimension `n`, that is the
-    exact solution to the harmonic oscillator wave function.
+"""Implememtation of the harmonic oscillator wave funtions
 
-    Extends:
-        tf.keras.layers.Layer
+Create a polynomial, up to `degree` in every dimension `n`, that is the
+exact solution to the harmonic oscillator wave function.
+
+"""
+
+def create_HarmonicOscillatorState(n : int, nparticles : int, degree : int, alpha : float):
+    """Initializer
+
+    Create a harmonic oscillator wave function
+
+    Arguments:
+        n {int} -- Dimension of the oscillator (1 <= n <= 3)
+        nparticles {int} -- Number of particles
+        degree {int} -- Degree of the solution (broadcastable to n)
+        alpha {float} -- Alpha parameter (m * omega / hbar)
+
+    Raises:
+        Exception -- [description]
     """
 
-    def __init__(self,  n : int, nparticles : int, degree : int, alpha : float):
-        """Initializer
+    if n < 1 or n > 3:
+        raise Exception("Dimension must be 1, 2, or 3 for HarmonicOscillatorWavefunction")
 
-        Create a harmonic oscillator wave function
+    if nparticles > 1:
+        raise Exception("HarmonicOscillatorWavefunction is only for 1 particle for testing.")
 
-        Arguments:
-            n {int} -- Dimension of the oscillator (1 <= n <= 3)
-            nparticles {int} -- Number of particles
-            degree {int} -- Degree of the solution (broadcastable to n)
-            alpha {float} -- Alpha parameter (m * omega / hbar)
+    # Use numpy to broadcast to the right dimension:
+    degree = numpy.asarray(degree, dtype=numpy.int32)
+    degree = numpy.broadcast_to(degree, (n,))
 
-        Raises:
-            Exception -- [description]
-        """
-        tf.keras.layers.Layer.__init__(self)
+    # Degree of the polynomial:
+    if numpy.min(degree) < 0 or numpy.max(degree) > 4:
+        raise Exception("Only the first 5 hermite polynomials are supported")
 
-        self.n = n
-        if self.n < 1 or self.n > 3:
-            raise Exception("Dimension must be 1, 2, or 3 for HarmonicOscillatorWavefunction")
+    alpha = numpy.asarray(alpha, dtype=numpy.int32)
+    alpha = numpy.broadcast_to(alpha, (n,))
 
-        if nparticles > 1:
-            raise Exception("HarmonicOscillatorWavefunction is only for 1 particle for testing.")
-
-        # Use numpy to broadcast to the right dimension:
-        degree = numpy.asarray(degree, dtype=numpy.int32)
-        degree = numpy.broadcast_to(degree, (self.n,))
-
-        # Degree of the polynomial:
-        self.degree = degree
-
-        if numpy.min(self.degree) < 0 or numpy.max(self.degree) > 4:
-            raise Exception("Only the first 5 hermite polynomials are supported")
-
-        alpha = numpy.asarray(alpha, dtype=numpy.int32)
-        alpha = numpy.broadcast_to(alpha, (self.n,))
-        self.alpha = alpha
-
-        # Normalization:
-        self.norm = numpy.power(self.alpha / numpy.pi, 0.25)
-        self.norm = numpy.prod(self.norm)
+    # Normalization:
+    norm = numpy.power(alpha / numpy.pi, 0.25)
+    norm = numpy.prod(norm)
 
 
-        # Craft the polynomial coefficients:
+    # Craft the polynomial coefficients:
 
-        # Add one to the degree since they start at "0"
-        # Polynomial is of shape [degree, largest_dimension]
-        self.polynomial = numpy.zeros(shape=(max(self.degree) + 1, self.n))
-        #  Loop over the coefficents and set them:
+    # Add one to the degree since they start at "0"
+    # Polynomial is of shape [degree, largest_dimension]
+    polynomial = numpy.zeros(shape=(max(degree) + 1, n))
+    #  Loop over the coefficents and set them:
 
-        # Loop over dimension:
-        self.polynomial_norm = numpy.zeros(shape=(self.n,))
-        for _n in range(self.n):
-            # Loop over degree:
-            _d = self.degree[_n]
-            if _d == 0:
-                self.polynomial[0][_n] = 1.0
-            elif _d == 1:
-                self.polynomial[1][_n] = 2.0
-            elif _d == 2:
-                self.polynomial[0][_n] = -2.0
-                self.polynomial[2][_n] = 4.0
-            elif _d == 3:
-                self.polynomial[1][_n] = -12.0
-                self.polynomial[3][_n] = 8.0
-            elif _d == 4:
-                self.polynomial[0][_n] = 12.0
-                self.polynomial[2][_n] = -48.0
-                self.polynomial[4][_n] = 16.0
-
-            # Set the polynomial normalization as a function of the degree
-            # For each dimension:
-            self.polynomial_norm[_n] = 1.0 / numpy.sqrt(2**_d * numpy.math.factorial(_d))
-
-        self.polynomial_norm = tf.convert_to_tensor(self.polynomial_norm.astype(numpy.float32))
-
-
-        self.exp = GaussianBoundaryCondition(n=self.n, exp=numpy.sqrt(self.alpha), trainable=False)
-
-    @tf.function
-    def call(self, inputs):
-
-        # Slice the inputs to restrict to just one particle:
-        y = inputs[:,0,:]
-
-        # Create the output tensor with the right shape, plus the constant term:
-        polynomial_result = tf.zeros(y.shape)
-
-        # This is a somewhat basic implementation:
+    # Loop over dimension:
+    polynomial_norm = numpy.zeros(shape=(n,))
+    for _n in range(n):
         # Loop over degree:
-        for d in range(max(self.degree) + 1):
-            # Loop over dimension:
+        _d = degree[_n]
+        if _d == 0:
+            jax.ops.index_update(polynomial, jax.ops.index[0,_n], 1.0)
+        elif _d == 1:
+            jax.ops.index_update(polynomial, jax.ops.index[1,_n], 2.0)
+        elif _d == 2:
+            jax.ops.index_update(polynomial, jax.ops.index[0,_n], -2.0)
+            jax.ops.index_update(polynomial, jax.ops.index[2,_n], 4.0)
+        elif _d == 3:
+            jax.ops.index_update(polynomial, jax.ops.index[1,_n], -12.0)
+            jax.ops.index_update(polynomial, jax.ops.index[3,_n], 8.0)
+        elif _d == 4:
+            jax.ops.index_update(polynomial, jax.ops.index[0,_n], 12.0)
+            jax.ops.index_update(polynomial, jax.ops.index[2,_n], -48.0)
+            jax.ops.index_update(polynomial, jax.ops.index[4,_n], 16.0)
 
-            # This is raising every element in the input to the d power (current degree)
-            # This gets reduced by summing over all degrees for a fixed dimenions
-            # Then they are reduced by multiplying over dimensions
-            poly_term = y**d
+        # Set the polynomial normalization as a function of the degree
+        # For each dimension:
+        jax.ops.index_update(polynomial_norm, jax.ops.index[_n],
+            1.0 / numpy.sqrt(2**_d * numpy.prod(numpy.arange(_d) + 1.)))
 
 
-            # Multiply every element (which is the dth power) by the appropriate
-            # coefficient in it's dimension
-            res_vec = poly_term * self.polynomial[d]
+    exp = numpy.sqrt(alpha)
+    
+    state = {
+        'n'             : n,
+        'degree'        : degree,
+        'exponent'      : exp,
+        'normalization' : norm,
+        'polynomial'    : polynomial,
+        'poly_norm'     : polynomial_norm,
 
-            # Add this to the result:
-            polynomial_result += res_vec
+    }
+
+    return state
+
+def HarmonicOscillatorWavefunction(inputs, harmonic_oscillator_state):
+
+    # Slice the inputs to restrict to just one particle:
+    # print(inputs.shape)
+    y = numpy.reshape(inputs, [-1,1])
+    # jax.ops.index_update(polynomial, jax.ops.index[0,_n], 12.0)
+
+    # Create the output tensor with the right shape, plus the constant term:
+    polynomial_result = numpy.zeros(y.shape)
+
+    # This is a somewhat basic implementation:
+    # Loop over degree:
+    for d in range(max(harmonic_oscillator_state['degree']) + 1):
+        # Loop over dimension:
+
+        # This is raising every element in the input to the d power (current degree)
+        # This gets reduced by summing over all degrees for a fixed dimenions
+        # Then they are reduced by multiplying over dimensions
+        poly_term = y**d
 
 
-        # Multiply the results across dimensions at every point:
-        polynomial_result = tf.reduce_prod(polynomial_result, axis=1)
+        # Multiply every element (which is the dth power) by the appropriate
+        # coefficient in it's dimension
+        res_vec = poly_term * harmonic_oscillator_state['polynomial'][d]
 
-        # Again restrict the BC to just one particle:
-        boundary_condition = self.exp(inputs)[:,0]
+        # Add this to the result:
+        polynomial_result += res_vec
 
-        total_normalization = self.norm * tf.reduce_prod(self.polynomial_norm)
-        epsilon = 1e-16
-        # Add epsilon here to prevent underflow
-        wavefunction = tf.math.log(boundary_condition * polynomial_result * total_normalization + epsilon)
 
-        return tf.reshape(wavefunction, [-1, 1])
+    # Multiply the results across dimensions at every point:
+    polynomial_result = numpy.prod(polynomial_result, axis=1)
+
+    # restrict the BC to just one particle:
+    exponent_term = numpy.sum((harmonic_oscillator_state['exponent'] * y)**2, axis=-1)
+    boundary_condition = numpy.exp(- (exponent_term) / 2.)
+
+    total_normalization = harmonic_oscillator_state['normalization'] * numpy.prod(harmonic_oscillator_state['poly_norm'])
+    epsilon = 1e-16
+    # Add epsilon here to prevent underflow
+    wavefunction = numpy.log(boundary_condition * polynomial_result * total_normalization + epsilon)
+
+
+    return wavefunction

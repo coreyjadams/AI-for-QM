@@ -1,5 +1,4 @@
-import tensorflow as tf
-import numpy
+from jax import numpy
 
 class Estimator(object):
     """ Accumulate block and totalk averages and errors
@@ -39,6 +38,6 @@ class Estimator(object):
         self.dpsi_i /= nav
         self.dpsi_i_EL /= nav
         self.dpsi_ij /= nav
-        error= tf.sqrt((self.energy2 - self.energy**2) / (nav-1))
-        error_jf = tf.sqrt((self.energy2_jf - self.energy_jf**2) / (nav-1))
+        error= numpy.sqrt((self.energy2 - self.energy**2) / (nav-1))
+        error_jf = numpy.sqrt((self.energy2_jf - self.energy_jf**2) / (nav-1))
         return error, error_jf

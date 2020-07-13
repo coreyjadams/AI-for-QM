@@ -146,10 +146,10 @@ logger = logging.getLogger()
 
 class Optimizer(object):
 
-    def __init__(self,delta,eps,npt):
+    def __init__(self,delta,eps):
         self.eps    = tf.convert_to_tensor(eps, dtype=tf.float64)
         self.delta  = tf.convert_to_tensor(delta, dtype=tf.float64)
-        self.npt    = npt
+        # self.npt    = npt
 #
     @tf.function
     def par_dist(self, dp_i, S_ij):

@@ -1,7 +1,4 @@
-from .HarmonicOscillatorWavefunction import HarmonicOscillatorWavefunction
-from .PolynomialWavefunction         import PolynomialWavefunction
-from .NeuralWavefunction             import NeuralWavefunction
-from .DeepSetsWavefunction           import DeepSetsWavefunction
-from .GaussianBoundaryCondition      import GaussianBoundaryCondition
-from .ExponentialBoundaryCondition   import ExponentialBoundaryCondition
+from .HarmonicOscillatorWavefunction import create_HarmonicOscillatorState, HarmonicOscillatorWavefunction
+# from .NeuralWavefunction             import NeuralWavefunction
+from .DeepSetsWavefunction           import create_DeepSetsState, DeepSetsWavefunction
 

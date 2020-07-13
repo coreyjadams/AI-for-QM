@@ -5,10 +5,7 @@ import time
 
 import argparse
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
-import tensorflow as tf
-
+from jax import numpy, jit, random
 
 import logging
 logger = logging.getLogger()
@@ -18,7 +15,7 @@ handler = logging.StreamHandler(sys.stdout)
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 handler.setFormatter(formatter)
 logger.addHandler(handler)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 '''
 This script runs the nieve, lattice-based optimization.
@@ -60,6 +57,8 @@ class exec(object):
         self.nparticles = int(self.config['General']['nparticles'])
         self.degree     = int(self.config['General']['degree'])
 
+        self.key = random.PRNGKey(int(self.config['General']['seed']))
+
         self.build_sampler()
         self.build_hamiltonian()
 
@@ -83,21 +82,21 @@ class exec(object):
             n           = self.dimension,
             nparticles  = self.nparticles,
             nwalkers    = self.nwalkers,
-            initializer = tf.random.normal,
-            init_params = {"mean": 0.0, "stddev" : 0.2})
+            initializer = random.normal,
+            init_params = {"mean": 0.0, "stddev" : 0.2},
+            rng_key     = self.key)
 
         return
 
     def build_hamiltonian(self):
 
-        from mlqm.hamiltonians import HarmonicOscillator
+        from mlqm.hamiltonians import HarmonicOscillatorEnergy
 
-        self.hamiltonian = HarmonicOscillator(
-            n           = self.dimension,
-            nparticles  = self.nparticles,
-            M           = float(self.config["Hamiltonian"]["mass"]),
-            omega       = float(self.config["Hamiltonian"]["omega"]),
-        )
+        self.m      = float(self.config["Hamiltonian"]["mass"]),
+        self.omega  = float(self.config["Hamiltonian"]["omega"])
+
+        # Capture the function
+        self.hamiltonian = HarmonicOscillatorEnergy
 
     def run(self):
         print("running")
@@ -106,12 +105,14 @@ class exec(object):
         # For each dimension, randomly pick a degree
         degree = [ 1 for d in range(self.dimension)]
 
-        from mlqm.models import HarmonicOscillatorWavefunction
-        self.wavefunction = HarmonicOscillatorWavefunction(
+        from mlqm.models import HarmonicOscillatorWavefunction, create_HarmonicOscillatorState
+        self.wavefunction_state = create_HarmonicOscillatorState(
             n          = self.dimension,
             nparticles = self.nparticles,
             degree     = self.degree,
             alpha      = 1)
+
+        self.wavefunction = HarmonicOscillatorWavefunction
 
         from mlqm.optimization import Optimizer
         from mlqm.samplers     import Estimator
@@ -125,10 +126,11 @@ class exec(object):
 
 
         # Run the wave function once to initialize all it's weights
-        _ = self.wavefunction(x)
+        _ = self.wavefunction(x, self.wavefunction_state)
 
 
-        energy, energy_by_parts = self.hamiltonian.energy(self.wavefunction, x)
+        energy, energy_by_parts = self.hamiltonian(
+            self.wavefunction, self.wavefunction_state, x, self.m, self.omega)
 
         for i in range(int(optimization['iterations'])):
             start = time.time()
@@ -150,7 +152,6 @@ class exec(object):
                 logger.info(f"time = {time.time() - start:.3f}")
 
 
-    # @tf.function
     def walk(self, neq, nav, nprop, nvoid):
         nblock = neq + nav
         nstep = nprop * nvoid
@@ -163,7 +164,7 @@ class exec(object):
         # Sample initial configurations uniformy between -sig and sig
         x_original = self.sampler.sample()
 
-        kicker = tf.random.normal
+        kicker = random.normal
         kicker_params = {"mean": 0.0, "stddev" : 0.2}
 
 
@@ -194,8 +195,8 @@ class exec(object):
 
 
                     block_estimator.accumulate(
-                        tf.reduce_sum(energy),
-                        tf.reduce_sum(energy_jf),
+                        numpy.sum(energy),
+                        numpy.sum(energy_jf),
                         acceptance,
                         1.,
                         0., # dpsi_i,
