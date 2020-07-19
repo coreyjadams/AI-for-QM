@@ -41,9 +41,15 @@ class NeuralWavefunction(torch.nn.Module):
         xinputs = inputs - mean[:,None,:]
         x = torch.flatten(xinputs, start_dim = 1)
         x = self.layer1(x)
-        x = torch.nn.functional.softplus(x, beta=1.)
+#        x = torch.nn.functional.softplus(x, beta=0.5)
+#        x = torch.sigmoid(x)
+        x = torch.tanh(x)
+        
         x = self.layer2(x)
-        x = torch.nn.functional.softplus(x, beta=1.)
+#        x = torch.nn.functional.softplus(x, beta=0.5)
+#        x = torch.sigmoid(x)
+        x = torch.tanh(x)
+        
         x = self.layer3(x)
         x = x.view([x.shape[0],])
         x = x - self.conf * torch.sum( xinputs**2, dim=(1,2) )
