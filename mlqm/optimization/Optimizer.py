@@ -22,9 +22,11 @@ class Optimizer(object):
         f_i = dpsi_i * energy - dpsi_i_EL
         S_ij = dpsi_ij - dpsi_i * dpsi_i.T
         i = 0
-        while True:
+        energy_d_min=100.
+        for n in range (20):
             S_ij_d = torch.clone(torch.detach(S_ij))
             S_ij_d += 2**i * self.eps * torch.eye(self.npt)
+#            S_ij_d += self.eps * torch.eye(self.npt)
             i += 1
             try:
                U_ij = torch.cholesky(S_ij_d, upper=True, out=None)
@@ -34,8 +36,8 @@ class Optimizer(object):
                logger.error("Warning, Cholesky did not find a positive definite matrix")
             if (positive_definite):
                dp_i = torch.cholesky_solve(f_i, U_ij, upper=True, out=None)
-               dp_i = self.delta * dp_i
-               dp_0 = 1. - self.delta * energy - torch.sum(dpsi_i * dp_i)
+               dp_i = self.delta * dp_i #/ 2**i
+               dp_0 = 1. - self.delta * (energy - 24.) - torch.sum(dpsi_i * dp_i)
 
                print("self.delta * energy", self.delta * energy)
                print("torch.sum(dpsi_i * dp_i)", torch.sum(dpsi_i * dp_i))
@@ -48,13 +50,10 @@ class Optimizer(object):
                delta_p = wavefunction.recover_flattened(dp_i, self.indeces_flat, wavefunction)
                delta_p = [ delta_p_i for delta_p_i in delta_p]
 
-               psi_d_a, psi_d_err_a, energy_d_a, energy_d_err_a = self.par_dist_full(delta_p, x_a, hamiltonian, potential, wavefunction )
+               psi_d, psi_d_err, energy_d_a, energy_d_err_a = self.par_dist_full(delta_p, x_a, hamiltonian, potential, wavefunction )
                torch.set_printoptions(precision=6)
                logger.debug(f"dist full x_a = {psi_d.data:.8f}, err = {psi_d_err.data:.8f}")
-               logger.debug(f"energy diff x_a = {energy_d.data:.6f}, err = {energy_d_err.data:.6f}")
-
-               
-
+               logger.debug(f"energy diff x_a = {energy_d_a.data:.6f}, err = {energy_d_err_a.data:.6f}")
                psi_d, psi_d_err, energy_d, energy_d_err = self.par_dist_full(delta_p, x_s, hamiltonian, potential, wavefunction )
                torch.set_printoptions(precision=6)
                logger.debug(f"dist param = {dist.data:.8f}")
@@ -62,9 +61,12 @@ class Optimizer(object):
                logger.debug(f"dist norm = {dist_norm.data:.6f}")
                logger.debug(f"dist full = {psi_d.data:.8f}, err = {psi_d_err.data:.8f}")
                logger.debug(f"energy diff = {energy_d.data:.6f}, err = {energy_d_err.data:.6f}")
-               if ( dist < 0.1 and psi_d > 0.9 and energy_d_a < 0.5):
-                  break
-        return delta_p
+               if ( dist < 0.1 and psi_d > 0.9 and energy_d_a < energy_d_min):
+                  energy_d_min = energy_d_a
+                  energy_d_err_min = energy_d_err_a
+                  delta_p_min = delta_p
+        logger.debug(f"energy diff min = {energy_d_min.data:.6f}, err = {energy_d_err_min.data:.6f}")
+        return delta_p_min
 
 
     def par_dist_full(self, delta_p, x_s, hamiltonian, potential, wavefunction):

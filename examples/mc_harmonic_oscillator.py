@@ -27,18 +27,18 @@ nav = 20
 nac = 40
 nobs = 10
 nvoid = 200
-nwalk = 200
-nopt = 200
+nwalk = 1600
+nopt = 400
 ndim = 3
 npart = 4
 seed = 17
 mass = 938.95
 hbar = 197.327
-delta = 0.02
-eps = 0.0001
-conf = 0.1
+delta = 0.001
+eps = 0.002
+conf = 0.06
 pot_name = 'pionless_4'
-module_load = False
+module_load = True
 module_write = True
 
 torch.set_default_tensor_type(torch.DoubleTensor)
@@ -54,9 +54,9 @@ hdlr = logging.FileHandler(f'{pot_name}_nucleus_{npart}.log')
 # Add formatting to the log:
 formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
 hdlr.setFormatter(formatter)
-ch = logging.StreamHandler()
+#ch = logging.StreamHandler()
 logger.addHandler(hdlr) 
-logger.addHandler(ch)
+#logger.addHandler(ch)
 # Set the default level. Levels here: https://docs.python.org/2/library/logging.html
 logger.setLevel(logging.DEBUG)
 
