@@ -12,6 +12,10 @@ class Optimizer(object):
         self.delta = delta
         self.npt = npt
         self.indeces_flat = indeces_flat
+        self.vt = 0.
+        self.vtm1 = 0.
+        self.gamma = 0.5
+        self.eta = 0.5
 
     def par_dist(self, dp_i, S_ij):
         D_ij = S_ij * (dp_i * dp_i.T)
@@ -26,7 +30,7 @@ class Optimizer(object):
         for n in range (20):
             S_ij_d = torch.clone(torch.detach(S_ij))
             S_ij_d += 2**i * self.eps * torch.eye(self.npt)
-#            S_ij_d += self.eps * torch.eye(self.npt)
+##            S_ij_d += self.eps * torch.eye(self.npt)
             i += 1
             try:
                U_ij = torch.cholesky(S_ij_d, upper=True, out=None)
@@ -37,13 +41,17 @@ class Optimizer(object):
             if (positive_definite):
                dp_i = torch.cholesky_solve(f_i, U_ij, upper=True, out=None)
                dp_i = self.delta * dp_i #/ 2**i
-               dp_0 = 1. - self.delta * (energy - 24.) - torch.sum(dpsi_i * dp_i)
+               dp_0 = 1. - self.delta * energy - torch.sum(dpsi_i * dp_i)
 
                print("self.delta * energy", self.delta * energy)
                print("torch.sum(dpsi_i * dp_i)", torch.sum(dpsi_i * dp_i))
                print("sandro", 1. - self.delta * energy - torch.sum(dpsi_i * dp_i))
 
 #               dp_i =  ( dp_i / dp_0 )
+
+# update with momentum      
+               dp_i = self.gamma * self.vtm1 + self.eta * ( dp_i / dp_0 )
+
                dist = self.par_dist(dp_i, S_ij)
                dist_reg = self.par_dist(dp_i, S_ij_d)
                dist_norm = self.par_dist(dp_i, dpsi_i * dpsi_i.T)
@@ -64,8 +72,11 @@ class Optimizer(object):
                if ( dist < 0.1 and psi_d > 0.9 and energy_d_a < energy_d_min):
                   energy_d_min = energy_d_a
                   energy_d_err_min = energy_d_err_a
+                  self.vt = dp_i
                   delta_p_min = delta_p
+			
         logger.debug(f"energy diff min = {energy_d_min.data:.6f}, err = {energy_d_err_min.data:.6f}")
+        self.vtm1 = self.vt
         return delta_p_min
 
 

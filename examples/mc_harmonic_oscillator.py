@@ -27,18 +27,18 @@ nav = 20
 nac = 40
 nobs = 10
 nvoid = 200
-nwalk = 1600
-nopt = 400
+nwalk = 200
+nopt = 100
 ndim = 3
 npart = 4
 seed = 17
 mass = 938.95
 hbar = 197.327
-delta = 0.001
-eps = 0.002
-conf = 0.06
+delta = 0.02
+eps = 0.001
+conf = 0.1
 pot_name = 'pionless_4'
-module_load = True
+module_load = False
 module_write = True
 
 torch.set_default_tensor_type(torch.DoubleTensor)
